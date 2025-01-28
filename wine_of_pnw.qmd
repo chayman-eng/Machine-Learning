@@ -1,0 +1,99 @@
+**Abstract:**
+
+This is a technical blog post of **both** an HTML file *and* [.qmd file](src/wine_of_pnw.qmd) hosted on GitHub pages.
+
+# Setup
+
+**Step Up Code:**
+```{r}
+library(tidyverse)
+library(moderndive) #needed to add this library for my regression summaries code
+
+
+wine <- readRDS(gzcon(url("https://github.com/cd-public/DSLM-505/raw/master/dat/wine.rds"))) %>%
+  filter(province=="Oregon" | province=="California" | province=="New York") %>% 
+  mutate(cherry=as.integer(str_detect(description,"[Cc]herry"))) %>% 
+  mutate(lprice=log(price)) %>% 
+  select(lprice, points, cherry, province)
+wine
+```
+ 
+**Explanation:**
+
+> <span style="color:red;font-weight:bold">TODO</span>: 
+
+*The code above creates a tibble which houses the wine data set being used on the homework. The opening line of code retrieves the data from the GitHub url and reads it in as an .rds file, storing it as "wine." The first in a series of piped functions, the second line of code modifies the data set by filtering the province column (and storing it under the name "province") so that it only contains three values: Oregon, California and New York. The third line of code is piped from the aforementioned lines and utilizes a mutate function to change the variable type within the newly created "cherry" column to an integer. This integer is contingent upon the containment of one of multiple variations of the word cherry in the "description" column from the original data set; if the description contains "cherry" in some capacity, it is given a value of 1, and if not, it is given a zero. The second to last line takes the log of the prices of the wines, and stores them in a new column titled: "lprice." This is done to adjust the scale for visualizations and easier computations. Lastly, the last line of code utilizes a select function to only call the four previously created columns in the lines above into the newly established "wine" tibble: "lprice," "points," "cherry," and "province."*
+
+# Multiple Regression
+
+## Linear Models
+
+First run a linear regression model with log of price as the dependent variable and 'points' and 'cherry' as features (variables).
+
+```{r}
+m1 <- lm(wine$lprice ~ wine$points + wine$cherry)
+m1
+
+rmse <- sqrt(mean(residuals(m1)^2))
+rmse
+```
+
+**Explanation:**
+
+> <span style="color:red;font-weight:bold">TODO</span>: *The code above fits a linear regression model to estimate the relationship between the dependent variable, wine$lprice, and the two independent variables, wine$points and wine$cherry. The tilde implies that the dependent variable should be analyzed as a function of the two independent variables; this analysis is stored as m1.*
+
+> <span style="color:red;font-weight:bold">TODO</span>: *The RMSE for this model can be calculated by taking the square root of the average of the dquared residuals. As such, I used residuals(m1) to find the residuals and plugged that into the rest of the calculation required to find RMSE. RMSE is the root mean squared error and indicates how closely the model predictions are to the observed values. Thus, a model of a lower RMSE is generally better, and in this case, the RMSE is 0.4688.*
+
+## Interaction Models
+
+Add an interaction between 'points' and 'cherry'. 
+
+```{r}
+interaction <- lm(lprice ~ points * cherry, data = wine)
+get_regression_table(interaction)
+get_regression_summaries(interaction)
+```
+
+> <span style="color:red;font-weight:bold">TODO</span>: *The code above stores a linear model that maps the relationship between points and cherry as a value "interaction." This value, when put into a "get regression table, yields a 2x7 tibble of interaction statistics like the estimate, standard error, statistic, p_value, lower confidence interval and upper confidence interval. The last line in the code above retrieves the summary statistics for the linear regression between the two variables. This line of code calls forth the values you see above (i.e. r_squared adj_r_squared, mse, rmse, sigma, statistic, p_value, df, and nobs.*
+
+> <span style="color:red;font-weight:bold">TODO</span>: *The RMSE is reported above and stands for the root mean squared error and indicates how closely the model predictions are to the observed values. Previously, I had to compute RMSE the long way by typing out its formula because I recieved an overfitting error, but for this question I received no such error. As such, I was able to do it more efficiently, and learn that it is only slightly different in that it is 0.4685 for this interaction of points AND cherry with lprice.*
+
+### The Interaction Variable
+
+> <span style="color:red;font-weight:bold">TODO</span>: *The coefficient on the interaction variable shows the effect of wine points (the rating of the wine) on the changes in log price (logarithm of the original price used to scale the data) for when the wine contains "Cherry" in its description. Essentially, this coefficient has a lot to say about whether or not the cherry flavor adds or subtracts from the quality of the wine which effects its value.*
+
+## Applications
+
+Determine which province (Oregon, California, or New York), does the 'cherry' feature in the data affect price most?
+
+```{r}
+m3 <- lm(lprice ~ cherry * province, data = wine)
+get_regression_table(m3)
+```
+
+> <span style="color:red;font-weight:bold">TODO</span>: *The first line in the code above stores a linear model that maps the relationship between price and cherry and providence, storing it as a value named "m3." The second line in the code retrieves the regression table to evaluate the relationship between lprice with both cherry and providence factored in. It appears in this model, that the cherry feature impacts the Oregon Providence significantly more than the New York province.*
+
+# Scenarios
+
+## On Accuracy
+
+Imagine a model to distinguish New York wines from those in California and Oregon. After a few days of work, you take some measurements and note: "I've achieved 91% accuracy on my model!" 
+
+Should you be impressed? Why or why not?
+
+```{r}
+table(wine$province) / nrow(wine)
+```
+
+> <span style="color:red;font-weight:bold">TODO</span>: *Given that nearly 72% of the wines in the data set are from California, that alone might lead to some bias. I would not think it to be too impressive given this divide in the data set, as the machine could have only perfected one province in California, or simply guessed California more frequently, thus easily inflating its true accuracy.*
+
+## On Ethics
+
+Why is understanding this vignette important to use machine learning in an ethical manner?
+
+> <span style="color:red;font-weight:bold">TODO</span>: *It is important to understand this vignette because in order for ML to be ethical, there must be transparency regarding limitations and the models must be evaluated beyond surface level scores or metrics like just accuracy.*
+
+## Ignorance is no excuse
+Imagine you are working on a model to predict the likelihood that an individual loses their job as the result of the changing federal policy under new presidential administrations. You have a very large dataset with many hundreds of features, but you are worried that including indicators like age, income or gender might pose some ethical problems. When you discuss these concerns with your boss, she tells you to simply drop those features from the model. Does this solve the ethical issue? Why or why not?
+
+> <span style="color:red;font-weight:bold">TODO</span>: *No; this does not simply just solve the ethical issues because even after dropping these attributes, other proxy variables, like zip code, job title, or socioeconomic status, could still correlate to the omitted values and thus the model retains its bias despite the efforts to eliminate it.*
