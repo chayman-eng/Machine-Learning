@@ -1,0 +1,84 @@
+**Abstract:**
+
+This is a technical blog post of **both** an HTML file *and* [.qmd file](src/wine_features.qmd) hosted on GitHub pages.
+
+# Setup
+
+1.  Change the author of this RMD file to be yourself and delete this line.
+2.  Modify if necessary the below code so that you can successfully load `wine.rds` then delete this line.
+3.  In the space provided after the R chunk, explain what thecode is doing (line by line) then delete this line.
+4.  Get your [GitHub Pages](https://docs.github.com/en/pages/quickstart) ready.
+
+**Step Up Code:**
+```{r}
+library(tidyverse)
+library(caret)
+library(fastDummies)
+wine <- readRDS(gzcon(url("https://github.com/cd-public/D505/raw/master/dat/wine.rds")))
+head(wine)
+```
+
+**Explanation:**
+
+> <span style="color:red;font-weight:bold">TODO</span>: *The code above serves to call upon the libraries that will be used in the rest of the document. In this case, the following libraries are going to be used: tidyverse, caret, and fastDummies. After these libraries are called in, the dataset is then read in in the form of an .rds file. The last line of code above utilizes a head() function to quickly display the first few rows of the tibble from the wine dataset so that I can inspect it.*
+
+# Feature Engineering
+
+We begin by engineering an number of features.
+
+1. Create a total of 10 features (including points). 
+2. Remove all rows with a missing value.
+3. Ensure only log(price) and engineering features are the only columns that remain in the `wino` dataframe.
+
+```{r}
+wino <- wine %>% 
+  mutate(lprice=log(price)) %>%
+  mutate(Roger = taster_name == "Roger Voss") %>%
+  mutate(Paul = taster_name == "Paul Gregutt") %>%
+  mutate(France = (country == "France")) %>%
+  mutate(US = (country == "US")) %>%
+  mutate(Spain = (country == "Spain")) %>%
+  mutate(cab = str_detect(variety, "Cabernet"))%>%
+  mutate(pinot_gris = str_detect(variety, "Pinot Gris")) %>%
+  mutate(title = str_detect(title, winery)) %>%
+  select(lprice, points, country, title, year, cab, pinot_gris, US, Spain, France, Roger, Paul) %>%
+  na.omit()
+head(wino)
+```
+
+# Caret
+
+We now use a train/test split to evaluate the features.
+
+1. Use the Caret library to partition the wino dataframe into an 80/20 split. 
+2. Run a linear regression with bootstrap resampling. 
+3. Report RMSE on the test partition of the data.
+
+TODO:
+```{r}
+set.seed(505)
+train_index <- createDataPartition(wino$lprice, p = 0.8, list = FALSE)
+wino_train <- wino[train_index, ]
+wino_test <- wino[-train_index, ]
+```
+
+```{r}
+model <- train(lprice ~ ., data = wino_train, method = "lm",
+               trControl = trainControl(method = "boot"))
+```
+
+```{r}
+predictions <- predict(model, newdata = wino_test)
+rmse_value <- RMSE(predictions, wino_test$lprice)
+cat("RMSE on test data:", rmse_value, "\n")
+```
+
+
+# Variable selection
+
+We now graph the importance of your 10 features.
+
+TODO:
+```{r}
+plot(varImp(model, scale = TRUE))
+```
