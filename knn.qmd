@@ -1,0 +1,134 @@
+---
+title: $K$NN
+author: "Cameron Hayman"
+date: "02/10/2025"
+
+format: 
+  html:  
+    theme: superhero  
+    mainfont: monospace
+    highlight-style: github
+    title-block-banner: true
+    embed-resources: true
+
+---
+
+**Abstract:**
+
+This is a technical blog post of **both** an HTML file *and* [.qmd file](https://raw.githubusercontent.com/cd-public/D505/refs/heads/master/hws/src/knn.qmd) hosted on GitHub pages.
+
+# 0. Quarto Type-setting
+
+- This document is rendered with Quarto, and configured to embed an images using the `embed-resources` option in the header.
+- If you wish to use a similar header, here's is the format specification for this document:
+
+```email
+format: 
+  html:
+    embed-resources: true
+```
+
+# 1. Setup
+
+```{r}
+library(tidyverse)
+library(caret)
+wine <- readRDS(gzcon(url("https://github.com/cd-public/D505/raw/master/dat/pinot.rds")))
+#wine
+```
+
+## 2. $K$NN Concepts
+
+> <span style="color:red;font-weight:bold">TODO</span>: *KNN is a non-parametric (statistical testing method for when data under consideration does not belong to a parametrized family of distributions) method used for classification and regression analysis. By taking the majority class of the specified number of nearest neighbors, the KNN algorithm can be a useful tool in classification and regression analysis, placing the specified object into a particular class.*
+
+## 3. Feature Engineering
+
+1. Create a version of the year column that is a *factor* (instead of numeric).
+2. Create dummy variables that indicate the presence of "cherry", "chocolate" and "earth" in the description.
+  - Take care to handle upper and lower case characters.
+3. Create 3 new features that represent the interaction between *time* and the cherry, chocolate and earth indicators.
+4. Remove the description column from the data.
+
+```{r}
+library(dplyr)
+library(stringr)
+library(fastDummies)
+
+wine <- wine %>%
+  mutate(year = as.factor(year),
+         time = as.numeric(year)) %>% 
+  mutate(note_cherry = str_detect(tolower(description), "cherry"),
+         note_chocolate = str_detect(tolower(description), "chocolate"),
+         note_earth = str_detect(tolower(description), "earth")) %>%  
+  mutate(time_cherry = time * as.integer(note_cherry),
+         time_chocolate = time * as.integer(note_chocolate),
+         time_earth = time * as.integer(note_earth)) %>%
+  select(-description) %>%
+  dummy_cols(select_columns = c("note_cherry", "note_chocolate", "note_earth"), 
+             remove_most_frequent_dummy = TRUE, remove_selected_columns = TRUE)
+#wine
+```
+## 4. Preprocessing
+
+1. Preprocess the dataframe from the previous code block using BoxCox, centering and scaling of the numeric features
+2. Create dummy variables for the `year` factor column
+
+```{r}
+
+preprocess_params <- preProcess(wine, method = c("center", "scale", "BoxCox"))
+wine_transformed <- predict(preprocess_params, wine)
+#wine_transformed
+```
+
+
+## 5. Running $K$NN
+
+1. Split the dataframe into an 80/20 training and test set
+2. Use Caret to run a $K$NN model that uses our engineered features to predict province
+  - use 5-fold cross validated subsampling 
+  - allow Caret to try 15 different values for $K$
+3. Display the confusion matrix on the test data
+
+
+```{r}
+set.seed(505)
+train_index <- createDataPartition(wine_transformed$points, p = 0.8, list = FALSE)
+train_data <- wine_transformed[train_index, ]
+test_data <- wine_transformed[-train_index, ]
+
+set.seed(505)
+ctrl <- trainControl(method = "cv", number = 5)
+
+tune_grid <- expand.grid(k = seq(1, 30, length.out = 15))
+
+knn_model <- train(
+  province ~ ., 
+  data = train_data, 
+  method = "knn", 
+  trControl = ctrl, 
+  tuneGrid = tune_grid)
+
+best_k <- knn_model$bestTune$k
+best_k
+
+train_data$province <- factor(train_data$province)
+test_data$province <- factor(test_data$province, levels = levels(train_data$province))
+
+knn_final_pred <- predict(knn_model, test_data)
+knn_final_pred <- factor(knn_final_pred, levels = levels(test_data$province))
+
+confusionMatrix(knn_final_pred, test_data$province)
+```
+
+## 6. Kappa
+
+How do we determine whether a Kappa value represents a good, bad or some other outcome?
+
+> <span style="color:red;font-weight:bold">TODO</span>: *Since Kappa is used to measure the agreement between the predicted classifications and the actual classifications, it should make sense then that the closer the value to 1, the more it represents a "good" outcome. However, with a really high kappa comes a large potential for bias, so an extremely high kappa can be slightly concerning. With that said, a good kappa is the range of 0.4-0.6, a great kappa in the realm of 0.61-0.79, and an excellent kappa in the realm of 0.8+ (though the 0.8+ does warrant probable cause for bias investigation).*
+
+## 7. Improvement
+
+How can we interpret the confusion matrix, and how can we improve in our predictions?
+
+> <span style="color:red;font-weight:bold">TODO</span>: *The confusion matrix serves as a way to visualize the model's classification performance. The most important function of the confusion matrix is to show how many of the model's predictions were correct or incorrect, and how so. The confusion matrix can be broken into four main parts, true positive, true negative, false positive and false negative. The two false categories represent the model's error, or instances in which a prediction was made incorrectly resulting in a missclassification.*
+
