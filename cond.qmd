@@ -1,0 +1,255 @@
+---
+title: "Conditional Probability"
+author: "Cameron Hayman"
+date: "02/17/2025"
+
+format: 
+  html:  # You will quite likely want to change all but the last one, to taste
+    theme: superhero  
+    mainfont: monospace
+    highlight-style: github
+    title-block-banner: true
+    embed-resources: true
+---
+
+**Abstract:**
+
+This is a technical blog post of **both** an HTML file *and* [.qmd file](https://raw.githubusercontent.com/cd-public/D505/refs/heads/master/hws/src/cond.qmd) hosted on GitHub pages.
+
+# 0. Quarto Type-setting
+
+- This document is rendered with Quarto, and configured to embed an images using the `embed-resources` option in the header.
+- If you wish to use a similar header, here's is the format specification for this document:
+
+```email
+format: 
+  html:
+    embed-resources: true
+```
+
+# 1. Setup
+
+**Step Up Code:**
+
+```{r}
+sh <- suppressPackageStartupMessages
+sh(library(tidyverse))
+sh(library(caret))
+wine <- readRDS(gzcon(url("https://github.com/cd-public/D505/raw/master/dat/pinot.rds")))
+head(wine)
+```
+
+# 2. Conditional Probability
+
+Calculate the probability that a Pinot comes from Burgundy given it has the word 'fruit' in the description.
+
+$$
+P({\rm Burgundy}~|~{\rm Fruit})
+$$
+
+```{r}
+# TODO
+wine_1 <- wine %>%
+  mutate(has_fruit = str_detect(description, regex("fruit", ignore_case = TRUE)))
+
+burgundy_with_fruit <- wine_1 %>%
+  filter(province == "Burgundy" & has_fruit) %>%
+  nrow()
+
+total_with_fruit <- wine_1 %>%
+  filter(has_fruit) %>%
+  nrow()
+
+pb_given_fruit <- burgundy_with_fruit / total_with_fruit
+pb_given_fruit
+```
+
+# 3. Naive Bayes Algorithm
+
+We train a naive bayes algorithm to classify a wine's province using:
+1. An 80-20 train-test split.
+2. Three features engineered from the description
+3. 5-fold cross validation.
+
+We report Kappa after using the model to predict provinces in the holdout sample.
+
+```{r}
+# TODO
+library(tidyverse)
+library(caret)
+library(fastDummies)
+library(thematic)
+library(naivebayes) # New
+library(tidytext) # New
+theme_set(theme_dark())
+thematic_rmd(bg = "#111", fg = "#eee", accent = "#eee")
+wine <- readRDS(gzcon(url("https://cd-public.github.io/D505/dat/pinot.rds")))
+names(wine)[names(wine) == 'id'] = 'ID'
+wino <- wine %>% 
+  mutate(year_f = as.factor(year)) %>% 
+  mutate(cherry = str_detect(description,"cherry")) %>% 
+  mutate(chocolate = str_detect(description,"chocolate")) %>%
+  mutate(earth = str_detect(description,"earth")) %>%
+  select(-description, year)
+
+glimpse(wino)
+
+set.seed(505)
+wine_index <- createDataPartition(wino$province, p = 0.80, list = FALSE)
+train <- wino[ wine_index, ]
+test <- wino[-wine_index, ]
+
+train_control <- trainControl(method = "cv", number = 5)
+nb_model <- train(province ~ ., data = trainData, method = "naive_bayes", trControl = train_control)
+
+predictions <- predict(nb_model, newdata = testData)
+predictions <- factor(predictions, levels = levels(testData$province))
+
+conf_matrix <- confusionMatrix(predictions, testData$province)
+kappa_value <- conf_matrix$overall['Kappa']
+kappa_value #This Kappa value is absolutely atrocious, not sure where I went awry.
+```
+
+# 4. Frequency Differences
+
+We find the three words that most distinguish New York Pinots from all other Pinots.
+
+```{r}
+# TODO
+library(tidyverse)
+library(tidytext)
+
+word_counts <- wine %>%
+  unnest_tokens(word, description) %>%
+  count(province, word, sort = TRUE) %>%
+  group_by(province) %>%
+  mutate(freq = n / sum(n)) %>%
+  ungroup()
+
+ny_freq <- word_counts %>%
+  filter(province == "New York") %>%
+  select(word, freq) 
+
+other_freq <- word_counts %>%
+  filter(province != "New York") %>%
+  group_by(word) %>%
+  summarise(freq_other = mean(freq, na.rm = TRUE)) %>%
+  ungroup()
+
+word_diff <- ny_freq %>%
+  left_join(other_freq, by = "word") %>%
+  mutate(diff = freq - freq_other) %>% # Math is fun, why not do it with words?
+  filter(!is.na(diff)) %>%  # Attempt to remove NAs in an effort to avoid blank table
+  arrange(desc(diff))
+
+top_words_ny <- word_diff %>%
+  slice_max(diff, n = 3) %>%
+  select(word, diff)
+
+print(top_words_ny)
+```
+
+# 5. Extension
+
+Calculate the variance of the logged word-frequency distributions for each province.
+
+```{r}
+# TODO
+word_freq <- wine %>%
+  unnest_tokens(word, description) %>%
+  count(province, word) %>%
+  group_by(province) %>%
+  mutate(freq = n / sum(n)) %>%
+  ungroup()
+
+word_freq <- word_freq %>%
+  mutate(log_freq = log(freq + 1))
+
+variance_by_province <- word_freq %>%
+  group_by(province) %>%
+  summarise(variance = var(log_freq, na.rm = TRUE))
+
+variance_by_province
+
+```
+# After my abysmal results for questions 3 and 4, I gave my code to Chatgpt as well as the prompt and a link for the database. When yielding the floor to the supreme overlord, it had this to say:
+
+```{r}
+# TODO 
+# Load required libraries
+library(tidyverse)
+library(caret)
+library(tm)
+library(e1071)
+
+# Load dataset
+wine <- readRDS(gzcon(url("https://cd-public.github.io/D505/dat/pinot.rds")))
+
+# Ensure province is a factor
+wine$province <- as.factor(wine$province)
+
+# Preprocessing: Create a corpus from wine descriptions
+corpus <- VCorpus(VectorSource(wine$description))
+corpus <- tm_map(corpus, content_transformer(tolower))
+corpus <- tm_map(corpus, removePunctuation)
+corpus <- tm_map(corpus, removeNumbers)
+corpus <- tm_map(corpus, removeWords, stopwords("en"))
+corpus <- tm_map(corpus, stripWhitespace)
+
+# Convert corpus into a Document-Term Matrix (DTM)
+dtm <- DocumentTermMatrix(corpus)
+
+# Convert DTM into a dataframe with word counts
+word_freq <- as.data.frame(as.matrix(dtm))
+word_freq <- cbind(province = wine$province, word_freq)
+
+# Feature selection: Pick the top 3 most frequent words
+word_sums <- colSums(word_freq[,-1])
+top_words <- names(sort(word_sums, decreasing = TRUE)[1:3])
+
+# Prepare final dataset with selected words
+df <- wine %>% 
+  select(province) %>%
+  cbind(word_freq[, top_words])
+
+# Ensure province is still a factor
+df$province <- as.factor(df$province)
+
+# Train-test split (80-20)
+set.seed(123)
+train_index <- createDataPartition(df$province, p = 0.8, list = FALSE)
+train_data <- df[train_index, ]
+test_data <- df[-train_index, ]
+
+# Ensure test data has the same factor levels as training data
+test_data$province <- factor(test_data$province, levels = levels(train_data$province))
+
+# Train Naïve Bayes model with 5-fold cross-validation
+train_control <- trainControl(method = "cv", number = 5)
+nb_model <- train(province ~ ., data = train_data, method = "nb", trControl = train_control)
+
+# Predict on test data
+test_pred <- predict(nb_model, newdata = test_data)
+
+# Ensure predictions are also factors with the same levels
+test_pred <- factor(test_pred, levels = levels(test_data$province))
+
+# Evaluate model performance using Kappa
+conf_matrix <- confusionMatrix(test_pred, test_data$province)
+kappa_value <- conf_matrix$overall["Kappa"]
+print(paste("Kappa:", kappa_value))
+
+# Find words that most distinguish New York Pinots from others
+ny_pinot <- subset(df, province == "New York")
+other_pinot <- subset(df, province != "New York")
+
+# Compute word frequency ratios
+ny_word_freq <- colSums(ny_pinot[,-1]) / nrow(ny_pinot)
+other_word_freq <- colSums(other_pinot[,-1]) / nrow(other_pinot)
+
+# Identify the three most distinguishing words
+word_ratios <- sort(ny_word_freq / (other_word_freq + 1e-6), decreasing = TRUE)
+distinguishing_words <- names(word_ratios)[1:3]
+print("Three words that most distinguish New York Pinots:")
+print(distinguishing_words)
+```
