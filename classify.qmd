@@ -1,0 +1,118 @@
+---
+title: "Classification"
+author: "Cameron Hayman"
+date: "02/24/2025"
+---
+
+**Abstract:**
+
+This is a technical blog post of **both** an HTML file *and* [.qmd file](https://raw.githubusercontent.com/cd-public/D505/refs/heads/master/hws/src/classify.qmd) hosted on GitHub pages.
+
+# 0. Quarto Type-setting
+
+-   This document is rendered with Quarto, and configured to embed an images using the `embed-resources` option in the header.
+-   If you wish to use a similar header, here's is the format specification for this document:
+
+``` email
+format: 
+  html:
+    embed-resources: true
+```
+
+# 1. Setup
+
+**Step Up Code:**
+
+```{r}
+sh <- suppressPackageStartupMessages
+sh(library(tidyverse))
+sh(library(caret))
+sh(library(naivebayes))
+sh(library(stringr))
+wine <- readRDS(gzcon(url("https://github.com/cd-public/D505/raw/master/dat/pinot.rds")))
+```
+
+# 2. Logistic Concepts
+
+Why do we call it Logistic Regression even though we are using the technique for classification?
+
+> [TODO]{style="color:red;font-weight:bold"}: *Even though it is used as a technique for classification, it is called logistic regression because it is based upon linear regression, which maps the continuous probability of an outcome.*
+
+# 3. Modeling
+
+We train a logistic regression algorithm to classify a whether a wine comes from Marlborough using:
+
+1.  An 80-20 train-test split.
+2.  Three features engineered from the description
+3.  5-fold cross validation.
+
+We report Kappa after using the model to predict provinces in the holdout sample.
+
+```{r}
+wine <- wine %>%
+  mutate(
+    oregon = ifelse(str_detect(province, regex("Oregon", ignore_case = TRUE)), 1, 0),
+    california = ifelse(str_detect(province, regex("California", ignore_case = TRUE)), 1, 0),
+    earth = ifelse(str_detect(description, regex("earth", ignore_case = TRUE)), 1, 0),
+    fruit = ifelse(str_detect(description, regex("fruit", ignore_case = TRUE)), 1, 0),
+    spice = ifelse(str_detect(description, regex("spice", ignore_case = TRUE)), 1, 0)
+  )
+
+# binary target variable
+wine <- wine %>%
+  mutate(province_binary = factor(ifelse(province == "Marlborough", "Marlborough", "Other")))
+
+# splitting into 80-20
+set.seed(505)
+trainIndex <- createDataPartition(wine$province_binary, p = 0.8, list = FALSE)
+train <- wine[trainIndex, ]
+test <- wine[-trainIndex, ]
+
+train <- downSample(x = train[, c("oregon", "california", "earth", "fruit", "spice")],  
+                    y = train$province_binary)  
+colnames(train)[ncol(train)] <- "province_binary"
+
+# training lrm with 5-fold cross validation
+control = trainControl(method = "cv", number = 5)
+get_fit <- function(wine) {
+  train(province_binary ~ .,
+        data = wine, 
+        trControl = control,
+        method = "glm",
+        family = "binomial",
+        maxit = 5)
+}
+# mapping results
+fit <- get_fit(train)
+fit
+```
+
+# 4. Binary vs Other Classification
+
+What is the difference between determining some form of classification through logistic regression versus methods like $K$-NN and Naive Bayes which performed classifications.
+
+> [TODO]{style="color:red;font-weight:bold"}: *For starters, the logistic regression is a parametric or probabilistic model-type, which is the first difference from Knn (non-parametric) and Naive Bayes (solely probabilistic). Also, it is helpful to use the logistic regression when the relationship between predictors and outcome is linear, whereas the others may be more helpful in less linear situations or with independant features.*
+
+# 5. ROC Curves
+
+We can display an ROC for the model to explain your model's quality.
+
+```{r}
+library(pROC)
+
+predictions_prob <- predict(fit, test, type = "prob")
+roc_curve <- roc(response = test$province_binary, 
+                 predictor = predictions_prob[, "Marlborough"], 
+                 levels = c("Other", "Marlborough"),
+                 direction = "<") 
+
+plot(roc_curve, main = "ROC Curve for Marlborough Classification", col = "blue", lwd = 2)
+abline(a = 0, b = 1, lty = 2, col = "red")
+```
+
+```{r}
+auc_value <- auc(roc_curve)
+print(paste("AUC:", auc_value))
+```
+
+> [TODO]{style="color:red;font-weight:bold"}: *With the Y-axis representing Sensitivity, or True Positive Rate, and the x-axis representing 1-specificity, or the False Positive Rate, this ROC Curve measures how often the model misclassifies non-marlborough wines as marlborough. The blue line represents the model performance, and maps the sensitivity changes while the classification threshold varies. The blue line for my model is compared to the red dashed line, which would represent an AUC of 0.5, essentially indicative of random guessing. Thus, the ROC curve above is making highly accurate predictions and is very close to the left and top edges of the plot, which would indicate a perfect classifier. As such, this curve accurately graphs the model I created above with an accuracy of 0.905 and a Kappa of 0.810. The AUC printed after the graph shows a 0.941, which also makes sense given the visual.*
